@@ -39,11 +39,14 @@ router.post(
       const fileUrl = `${file.path}`;
       const fields = extractFields(file.path);
 
-      const templateVariables = fields.map((field) => ({
-        name: field,
-        required: false,
-        showOnExcel: false,
-      }));
+      const templateVariables = fields.map((field) =>{
+        const isExcluded = field.toLowerCase() === "signature" || field.toLowerCase() === "rq code";
+        return{
+          name : field,
+          required : !isExcluded,
+          showOnExcel : !isExcluded
+        }
+      });
 
       const newTemplate = new TemplateModel({
         templateName: title,
