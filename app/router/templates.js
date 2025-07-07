@@ -4,10 +4,13 @@ import TemplateModel from "../models/template.js";
 import { status, signStatus } from "../constants/index.js";
 import { extractFields } from "../utilities/getWordPlaceholder.js";
 import multer from "multer";
-
+import { convertDocToPdf } from "../utilities/preview.js";
+import { Template } from "ejs";
 const router = Router();
 
-router.post("/addTemplate",(req, res, next) => {
+router.post(
+  "/addTemplate",
+  (req, res, next) => {
     upload.single("file")(req, res, function (err) {
       if (err instanceof multer.MulterError) {
         return res
@@ -33,7 +36,7 @@ router.post("/addTemplate",(req, res, next) => {
           .json({ msg: "Title, description, and file are required." });
       }
 
-      const fileUrl = `/uploads/${file.path}`;
+      const fileUrl = `${file.path}`;
       const fields = extractFields(file.path);
 
       const templateVariables = fields.map((field) => ({
@@ -64,16 +67,78 @@ router.post("/addTemplate",(req, res, next) => {
   }
 );
 
-router.get("/getAll", async (req,res) => {
-  try{
+router.get("/getAll", async (req, res) => {
+  try {
     const user = req?.session?.userId;
-    const templatesData = await TemplateModel.find({createdBy : user});
-    console.log(templatesData);
-    return res.json({templatesData});
-  }
-  catch(error){
+    const templatesData = await TemplateModel.find({
+      createdBy: user,
+      status: status.active,
+    });
+    return res.json({ templatesData });
+  } catch (error) {
     next(error);
   }
-})
+});
+
+router.get(`/preview/:id`, async (req, res, next) => {
+  try {
+    const template = await TemplateModel.findOne({
+      id: req?.params?.id,
+    }).select("url");
+    const pdfBuffer = await convertDocToPdf(template?.url);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "inline; filename=preview.pdf");
+    return res.send(pdfBuffer);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.delete("/delete/:id", async (req, res) => {
+  try {
+    const user = req?.session?.userId;
+    await TemplateModel.updateOne(
+      req?.query?.id,
+      { status: status.deleted },
+      { new: true }
+    );
+    const templatesData = await TemplateModel.find({
+      createdBy: user,
+      status: status.active,
+    });
+    return res.json({ templatesData });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/clone/:id", async (req, res, next) => {
+  try {
+    const id = req?.params?.id;
+    const user = req?.session?.userId;
+
+    const template = await TemplateModel.findOne({id});
+    console.log(template);
+    
+    const newTemplate = new TemplateModel({
+      templateName: template.templateName,
+      description : template.description,
+      url: template.url,
+      status: status.active,
+      signStatus: signStatus.unsigned,
+      createdBy: user,
+      updatedBy: user,
+      templateVariables : template.templateVariables,
+    });
+    await newTemplate.save();
+    const templatesData = await TemplateModel.find({
+      createdBy: user,
+      status: status.active,
+    });
+    return res.json({templatesData});
+  } catch (error) {
+    next(error);
+  }
+});
 
 export default router;
