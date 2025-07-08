@@ -6,11 +6,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const storage = multer.diskStorage({  
-  destination: function (req, file, cb) {
+  destination: function (req, file, cb) {    
     cb(null, path.resolve(__dirname, '../public/excel'));
   },
   filename: function (req, file, cb) {
-    cb(null, Date.now() + '-' + file.originalname);
+    cb(null, `${Date.now()}`);
   }
 });
 
