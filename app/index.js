@@ -35,7 +35,9 @@ app.set('views', path.join(__dirname, '/views'));
 app.use(sessionMiddleware);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use("/public", express.static(path.join(__dirname, "../public")));
+
+app.use("/signature", express.static(path.join(__dirname, '../app/public/signatures')));
+app.use(['/template', '/templates'], express.static(path.join(__dirname, "../app/public/uploads")));
 app.use('/', router);
 
 app.use((error, req, res, next) => {

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import api from './api/index.js';
-import signature from './signatures.js';
-import template from './templates.js';
+import signature from '../router/api/signautre.js';
+import template from '../router/api/template.js';
 import { loginUser } from "../controller/userController.js";
 import { checkLoginStatus } from "../middleware/checkAuth.js";
 
