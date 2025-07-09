@@ -6,6 +6,7 @@ import { status, signStatus } from "../../constants/index.js";
 import { extractFields } from "../../utilities/getWordPlaceholder.js";
 import multer from "multer";
 import { convertDocToPdf } from "../../utilities/preview.js";
+import mongoose from "mongoose";
 import path from "path";
 import ExcelJS from "exceljs";
 const router = Router();
@@ -169,48 +170,67 @@ router.post(
   async (req, res, next) => {
     try {
       const file = req?.file;
-      const fileName = file?.filename;
-      const filePath = path.join(__dirname, `../../public/excel/${fileName}`);
+      if (!file) return res.status(400).json({ error: "No file uploaded" });
 
       const templateId = req?.params?.id;
-      const templateVar = await TemplateModel.findOne({
-        id: templateId,
-      }).select("templateVariables");
-      const length = templateVar.templateVariables.length;
+      if (!mongoose.Types.ObjectId.isValid(templateId)) {
+        return res.status(400).json({ error: "Invalid template ID" });
+      }
 
+      const template = await TemplateModel.findOne({
+        id: new mongoose.Types.ObjectId(templateId),
+      });
+      if (!template)
+        return res.status(404).json({ error: "Template not found" });
+
+      const filePath = path.join(
+        process.cwd(),
+        "/app/public/excel",
+        file.filename
+      );
       const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.readFile(filePath);
+
+      const worksheet = workbook.getWorksheet(1);
+      const keys = template.templateVariables.map((v) => v.name);
+      const expectedLength = keys.length;
 
       const arrayOfRow = [];
-      const completeRows = [];
-
-      workbook.xlsx.readFile(filePath).then(() => {
-        const worksheet = workbook.getWorksheet(1);
-        worksheet.eachRow((row) => {
-          arrayOfRow.push(row.values);
-        });
-
-        arrayOfRow.forEach((row) => {
-          if (row.length - 1 == length) completeRows.push(row);
-        });
-
-        const rowsToSend = completeRows.map((row) => {
-          row.shift();
-          return row;
-        });
-
-        const keys = templateVar.templateVariables.map((item) => item.name); 
-
-        const formattedData = rowsToSend.map((row) => {
-          const rowObj = {};
-          keys.forEach((key, index) => {
-            rowObj[key] = String(row[index] ?? ""); 
-          });
-          return { data: rowObj };
-        });
-        console.log(formattedData);
-        
-        return res.json({ formattedData });
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return;
+        arrayOfRow.push(row.values);
       });
+      const completeRows = arrayOfRow.filter(
+        (row) => row.length - 1 === expectedLength
+      );
+
+      const rowsToSend = completeRows.map((row) => {
+        row.shift();
+        return row;
+      });
+
+      const formattedRows = rowsToSend.map((row) => {
+        const rowData = {};
+        keys.forEach((key, i) => {
+          rowData[key] = String(row[i] ?? "");
+        });
+
+        return {
+          id: new mongoose.Types.ObjectId(),
+          data: rowData,
+        };
+      });
+
+      const result = await TemplateModel.updateOne(
+        { id: new mongoose.Types.ObjectId(templateId) },
+        { $push: { data: { $each: formattedRows } } }
+      );
+      const allExcelFields = await TemplateModel.find({
+        id: new mongoose.Types.ObjectId(templateId),
+      }).select("data");
+      const finalOutput = allExcelFields[0]?.data;
+
+      res.json({ finalOutput });
     } catch (error) {
       next(error);
     }
@@ -235,4 +255,19 @@ router.get("/extractFields/:id", async (req, res, next) => {
   }
 });
 
+router.get("/getAll/:id", async (req, res, next) => {
+  try {
+    const id = req?.params?.id;
+    const allExcelFields = await TemplateModel.find({
+      id: new mongoose.Types.ObjectId(id),
+    }).select("data");
+    const finalOutput = allExcelFields[0]?.data;
+    console.log(finalOutput);
+    
+
+    res.json({ finalOutput });
+  } catch (error) {
+    next(error);
+  }
+});
 export default router;
