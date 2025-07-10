@@ -7,6 +7,7 @@ import { extractFields } from "../../utilities/getWordPlaceholder.js";
 import { checkLoginStatus } from "../../middleware/checkAuth.js";
 import multer from "multer";
 import { convertDocToPdf } from "../../utilities/preview.js";
+import { docPreview } from '../../utilities/preview.js';
 import mongoose from "mongoose";
 import path from "path";
 import ExcelJS from "exceljs";
@@ -77,7 +78,7 @@ router.post(
   }
 );
 
-router.get("/getAll",checkLoginStatus, async (req, res) => {
+router.get("/getAll", checkLoginStatus, async (req, res) => {
   try {
     const user = req?.session?.userId;
     const templatesData = await TemplateModel.find({
@@ -90,7 +91,7 @@ router.get("/getAll",checkLoginStatus, async (req, res) => {
   }
 });
 
-router.get(`/preview/:id`,checkLoginStatus, async (req, res, next) => {
+router.get(`/preview/:id`, checkLoginStatus, async (req, res, next) => {
   try {
     const template = await TemplateModel.findOne({
       id: req?.params?.id,
@@ -104,7 +105,7 @@ router.get(`/preview/:id`,checkLoginStatus, async (req, res, next) => {
   }
 });
 
-router.delete("/delete/:id",checkLoginStatus, async (req, res) => {
+router.delete("/delete/:id", checkLoginStatus, async (req, res) => {
   try {
     const user = req?.session?.userId;
     const id = req?.params?.id;
@@ -124,7 +125,7 @@ router.delete("/delete/:id",checkLoginStatus, async (req, res) => {
   }
 });
 
-router.post("/clone/:id",checkLoginStatus, async (req, res, next) => {
+router.post("/clone/:id", checkLoginStatus, async (req, res, next) => {
   try {
     const id = req?.params?.id;
     const user = req?.session?.userId;
@@ -240,7 +241,7 @@ router.post(
   }
 );
 
-router.get("/extractFields/:id",checkLoginStatus, async (req, res, next) => {
+router.get("/extractFields/:id", checkLoginStatus, async (req, res, next) => {
   try {
     const templateId = req?.params?.id;
     const templateVar = await TemplateModel.findOne({
@@ -258,7 +259,7 @@ router.get("/extractFields/:id",checkLoginStatus, async (req, res, next) => {
   }
 });
 
-router.get("/getAll/:id",checkLoginStatus, async (req, res, next) => {
+router.get("/getAll/:id", checkLoginStatus, async (req, res, next) => {
   try {
     const id = req?.params?.id;
     const allExcelFields = await TemplateModel.find({
@@ -279,54 +280,63 @@ router.get("/getAll/:id",checkLoginStatus, async (req, res, next) => {
   }
 });
 
-router.delete("/deleteDoc/:id/:docId",checkLoginStatus, async (req, res, next) => {
-  try{
-    const templateID = req?.params?.id;
-    const docId = req?.params?.docId;
-    console.log(templateID, docId);
-    
-    const result = await TemplateModel.updateOne(
-      { id: templateID },
-      {
-        $pull: {
-          data: { id: docId },
-        },
-      }
-    );
+router.delete(
+  "/deleteDoc/:id/:docId",
+  checkLoginStatus,
+  async (req, res, next) => {
+    try {
+      const templateID = req?.params?.id;
+      const docId = req?.params?.docId;
+      console.log(templateID, docId);
 
-    const allExcelFields = await TemplateModel.find({
-      id: new mongoose.Types.ObjectId(templateID),
-    }).select("data status");
-    const finalOutput = allExcelFields[0]?.data;
-    return res.json({finalOutput});
-  }
-  catch(error){
-    next(error);
-  }
-})
+      const result = await TemplateModel.updateOne(
+        { id: templateID },
+        {
+          $pull: {
+            data: { id: docId },
+          },
+        }
+      );
 
-router.get("/preview/:templateID/:id",checkLoginStatus, async (req, res, next) => {
+      const allExcelFields = await TemplateModel.find({
+        id: new mongoose.Types.ObjectId(templateID),
+      }).select("data status");
+      const finalOutput = allExcelFields[0]?.data;
+      return res.json({ finalOutput });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.get(
+  "/preview/:templateID/:id",
+  checkLoginStatus,
+  async (req, res, next) => {
+    try {
+      const templateId = req?.params?.templateID;
+      const id = req?.params?.id;
+      
+      const result = await TemplateModel.findOne(
+        { id: templateId, "data.id": id},
+        { "data.$": 1 }
+      ).select("url");
+      const dataToFill = result.data[0].data;
+      const path = result.url;
+
+      const bufferData = await docPreview(dataToFill, path);
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", "inline; filename=offer_letter.pdf");
+      res.send(bufferData);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.post("/dispatch/:id", checkLoginStatus, async (req, res, next) => {
   try {
-    const templateId = req?.params?.templateID;
-    const id = req?.params?.id;
-
-    const result = await TemplateModel.findOne(
-      { id: templateId, "data.id": new mongoose.Types.ObjectId(id) },
-      { "data.$": 1 } 
-    ).select("url");
-    console.log(result);
-    
-  } catch (error) {
-    next(error);
-  }
+  } catch (error) {}
 });
-
-router.post("/dispatch/:id",checkLoginStatus, async (req, res, next) => {
-  try{
-
-  }
-  catch(error) {
-
-  }
-})
 export default router;
