@@ -4,6 +4,7 @@ import excelUpload from "../../middleware/excelUpload.js";
 import TemplateModel from "../../models/template.js";
 import { status, signStatus } from "../../constants/index.js";
 import { extractFields } from "../../utilities/getWordPlaceholder.js";
+import { checkLoginStatus } from "../../middleware/checkAuth.js";
 import multer from "multer";
 import { convertDocToPdf } from "../../utilities/preview.js";
 import mongoose from "mongoose";
@@ -13,6 +14,7 @@ const router = Router();
 const __dirname = import.meta.dirname;
 router.post(
   "/addTemplate",
+  checkLoginStatus,
   (req, res, next) => {
     upload.single("file")(req, res, function (err) {
       if (err instanceof multer.MulterError) {
@@ -75,7 +77,7 @@ router.post(
   }
 );
 
-router.get("/getAll", async (req, res) => {
+router.get("/getAll",checkLoginStatus, async (req, res) => {
   try {
     const user = req?.session?.userId;
     const templatesData = await TemplateModel.find({
@@ -88,7 +90,7 @@ router.get("/getAll", async (req, res) => {
   }
 });
 
-router.get(`/preview/:id`, async (req, res, next) => {
+router.get(`/preview/:id`,checkLoginStatus, async (req, res, next) => {
   try {
     const template = await TemplateModel.findOne({
       id: req?.params?.id,
@@ -102,7 +104,7 @@ router.get(`/preview/:id`, async (req, res, next) => {
   }
 });
 
-router.delete("/delete/:id", async (req, res) => {
+router.delete("/delete/:id",checkLoginStatus, async (req, res) => {
   try {
     const user = req?.session?.userId;
     const id = req?.params?.id;
@@ -122,7 +124,7 @@ router.delete("/delete/:id", async (req, res) => {
   }
 });
 
-router.post("/clone/:id", async (req, res, next) => {
+router.post("/clone/:id",checkLoginStatus, async (req, res, next) => {
   try {
     const id = req?.params?.id;
     const user = req?.session?.userId;
@@ -152,6 +154,7 @@ router.post("/clone/:id", async (req, res, next) => {
 
 router.post(
   "/addExcel/:id",
+  checkLoginStatus,
   (req, res, next) => {
     excelUpload.single("excelFile")(req, res, function (err) {
       if (err instanceof multer.MulterError) {
@@ -237,7 +240,7 @@ router.post(
   }
 );
 
-router.get("/extractFields/:id", async (req, res, next) => {
+router.get("/extractFields/:id",checkLoginStatus, async (req, res, next) => {
   try {
     const templateId = req?.params?.id;
     const templateVar = await TemplateModel.findOne({
@@ -255,19 +258,75 @@ router.get("/extractFields/:id", async (req, res, next) => {
   }
 });
 
-router.get("/getAll/:id", async (req, res, next) => {
+router.get("/getAll/:id",checkLoginStatus, async (req, res, next) => {
   try {
     const id = req?.params?.id;
     const allExcelFields = await TemplateModel.find({
       id: new mongoose.Types.ObjectId(id),
-    }).select("data");
+    }).select("data status");
     const finalOutput = allExcelFields[0]?.data;
-    console.log(finalOutput);
-    
 
+    const assignedDocs = await TemplateModel.find({
+      assignedTo: { $exists: true, $ne: null },
+    });
+    let isDispatched = false;
+    if (assignedDocs.length != 0) {
+      isDispatched = true;
+    }
     res.json({ finalOutput });
   } catch (error) {
     next(error);
   }
 });
+
+router.delete("/deleteDoc/:id/:docId",checkLoginStatus, async (req, res, next) => {
+  try{
+    const templateID = req?.params?.id;
+    const docId = req?.params?.docId;
+    console.log(templateID, docId);
+    
+    const result = await TemplateModel.updateOne(
+      { id: templateID },
+      {
+        $pull: {
+          data: { id: docId },
+        },
+      }
+    );
+
+    const allExcelFields = await TemplateModel.find({
+      id: new mongoose.Types.ObjectId(templateID),
+    }).select("data status");
+    const finalOutput = allExcelFields[0]?.data;
+    return res.json({finalOutput});
+  }
+  catch(error){
+    next(error);
+  }
+})
+
+router.get("/preview/:templateID/:id",checkLoginStatus, async (req, res, next) => {
+  try {
+    const templateId = req?.params?.templateID;
+    const id = req?.params?.id;
+
+    const result = await TemplateModel.findOne(
+      { id: templateId, "data.id": new mongoose.Types.ObjectId(id) },
+      { "data.$": 1 } 
+    ).select("url");
+    console.log(result);
+    
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post("/dispatch/:id",checkLoginStatus, async (req, res, next) => {
+  try{
+
+  }
+  catch(error) {
+
+  }
+})
 export default router;

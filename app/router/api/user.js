@@ -6,7 +6,20 @@ import { checkAdmin } from "../../middleware/checkAdmin.js";
 import { UserCreationSchema, UserUpdateSchema } from "../../schema/user.js";
 import { bcryptPass, generatePassword } from "../../libs/encryption.js";
 import { sendNewUserEmail } from "../../libs/communication.js";
+import UserModel from '../../models/users.js'
 const router = Router();
+
+router.get("/getOfficers",checkLoginStatus, async (req, res, next) => {
+  try{
+    const courtId = req?.session?.courtId;
+    
+    const officers = await UserModel.find({ role : roles.officer, courtId}).select("name email -_id");
+    return res.json({officers});
+  }
+  catch(error){
+    next(error);
+  }
+})
 
 router.get("/", checkLoginStatus, checkAdmin, async (req, res, next) => {
   try {
@@ -234,5 +247,7 @@ router.delete(
     }
   }
 );
+
+
 
 export default router;
