@@ -334,9 +334,4 @@ router.get(
     }
   }
 );
-
-router.post("/dispatch/:id", checkLoginStatus, async (req, res, next) => {
-  try {
-  } catch (error) {}
-});
 export default router;

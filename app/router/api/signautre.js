@@ -3,6 +3,10 @@ import multer from "multer";
 import signatureUpload from "../../middleware/signatureUpload.js";
 import Signature from "../../models/signatures.js";
 import { status } from "../../constants/index.js";
+import { signStatus } from "../../constants/index.js";
+import { checkLoginStatus } from "../../middleware/checkAuth.js";
+import TemplateModel from "../../models/template.js";
+import { getIO } from '../../config/socket.js'
 import mongoose from 'mongoose';
 const router = Router();
 
@@ -49,7 +53,7 @@ router.get("/getAll", async (req, res, next) => {
   try {
     const user = req?.session?.userId;
     const allURL = await Signature.find({createdBy : user, status : status.active}).select("url");
-    return res.json({allURL})
+    return res.json({allURL});
   } catch (error) {
     next(error);
   }
@@ -73,5 +77,18 @@ router.delete("/delete/:id", async (req, res, next) => {
     next(error);
   }
 })
+
+router.post("/sendForSign/:templateID/:id", checkLoginStatus, async (req, res, next) => {
+  try {
+    const templateID = req?.params?.templateID;
+    const userIdToSend = req?.params?.id;
+    const result = await TemplateModel.findOneAndUpdate({id : templateID}, {assignedTo : userIdToSend, signStatus : signStatus.readForSign });
+    const io = getIO();
+    io.to(userIdToSend).emit("signature-request", result);
+    return res.json({msg : "Sent successfully"});
+  } catch (error) {
+    next(error);
+  }
+});
 
 export default router;

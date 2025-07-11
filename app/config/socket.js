@@ -30,5 +30,10 @@ export function createSocketServer(server) {
     return io;
 }
 
+export const getIO = () => {
+    if(!io)
+        return;
+    return io;
+}
 
 export default { io };
