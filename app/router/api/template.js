@@ -7,7 +7,7 @@ import { extractFields } from "../../utilities/getWordPlaceholder.js";
 import { checkLoginStatus } from "../../middleware/checkAuth.js";
 import multer from "multer";
 import { convertDocToPdf } from "../../utilities/preview.js";
-import { docPreview } from '../../utilities/preview.js';
+import { docPreview } from "../../utilities/preview.js";
 import mongoose from "mongoose";
 import path from "path";
 import ExcelJS from "exceljs";
@@ -250,10 +250,11 @@ router.get("/extractFields/:id", checkLoginStatus, async (req, res, next) => {
 
     const temp = await TemplateModel.findOne({
       id: templateId,
-    }).select("templateName");
+    }).select("templateName assignedTo");
+    const assignedToExists = temp?.assignedTo ? true : false;
     const name = temp?.templateName;
 
-    return res.json({ templateVar, name });
+    return res.json({ templateVar, name, assignedToExists});
   } catch (error) {
     next(error);
   }
@@ -316,9 +317,9 @@ router.get(
     try {
       const templateId = req?.params?.templateID;
       const id = req?.params?.id;
-      
+
       const result = await TemplateModel.findOne(
-        { id: templateId, "data.id": id},
+        { id: templateId, "data.id": id },
         { "data.$": 1 }
       ).select("url");
       const dataToFill = result.data[0].data;
@@ -334,4 +335,16 @@ router.get(
     }
   }
 );
+
+router.get("/requests", async (req, res, next) => {
+  try {
+    const userId = req?.session?.userId;
+    const requests = await TemplateModel.find({
+      $and: [{ status: status.active }, { assignedTo: userId }],
+    });
+    return res.json({requests});
+  } catch (error) {
+    next(error);
+  }
+});
 export default router;

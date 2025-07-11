@@ -82,8 +82,11 @@ router.post("/sendForSign/:templateID/:id", checkLoginStatus, async (req, res, n
   try {
     const templateID = req?.params?.templateID;
     const userIdToSend = req?.params?.id;
-    const result = await TemplateModel.findOneAndUpdate({id : templateID}, {assignedTo : userIdToSend, signStatus : signStatus.readForSign });
+    const result = await TemplateModel.findOneAndUpdate({id : templateID}, {assignedTo : userIdToSend, signStatus : signStatus.readForSign }, {new : true});
+    console.log(result);
+    
     const io = getIO();
+    console.log(userIdToSend,result);
     io.to(userIdToSend).emit("signature-request", result);
     return res.json({msg : "Sent successfully"});
   } catch (error) {
