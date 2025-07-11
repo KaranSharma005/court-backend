@@ -5,6 +5,7 @@ import TemplateModel from "../../models/template.js";
 import { status, signStatus } from "../../constants/index.js";
 import { extractFields } from "../../utilities/getWordPlaceholder.js";
 import { checkLoginStatus } from "../../middleware/checkAuth.js";
+import { isOfficer, isReader } from "../../middleware/checkuser.js";
 import multer from "multer";
 import { convertDocToPdf } from "../../utilities/preview.js";
 import { docPreview } from "../../utilities/preview.js";
@@ -82,8 +83,8 @@ router.get("/getAll", checkLoginStatus, async (req, res) => {
   try {
     const user = req?.session?.userId;
     const templatesData = await TemplateModel.find({
-      createdBy: user,
       status: status.active,
+      $or: [{ createdBy: user }, { assignedTo: user }],
     });
     return res.json({ templatesData });
   } catch (error) {
@@ -116,8 +117,8 @@ router.delete("/delete/:id", checkLoginStatus, async (req, res) => {
       { new: true }
     );
     const templatesData = await TemplateModel.find({
-      createdBy: user,
       status: status.active,
+      $or: [{ createdBy: user }, { assignedTo: user }],
     });
     return res.json({ templatesData });
   } catch (error) {
@@ -135,17 +136,17 @@ router.post("/clone/:id", checkLoginStatus, async (req, res, next) => {
     const newTemplate = new TemplateModel({
       templateName: template.templateName,
       description: template.description,
-      url: template.url,
-      status: status.active,
-      signStatus: signStatus.unsigned,
+      url: template?.url,
+      status: status?.active,
+      signStatus: signStatus?.unsigned,
       createdBy: user,
       updatedBy: user,
       templateVariables: template.templateVariables,
     });
     await newTemplate.save();
     const templatesData = await TemplateModel.find({
-      createdBy: user,
       status: status.active,
+      $or: [{ createdBy: user }, { assignedTo: user }],
     });
     return res.json({ templatesData });
   } catch (error) {
@@ -254,7 +255,7 @@ router.get("/extractFields/:id", checkLoginStatus, async (req, res, next) => {
     const assignedToExists = temp?.assignedTo ? true : false;
     const name = temp?.templateName;
 
-    return res.json({ templateVar, name, assignedToExists});
+    return res.json({ templateVar, name, assignedToExists });
   } catch (error) {
     next(error);
   }
@@ -288,7 +289,6 @@ router.delete(
     try {
       const templateID = req?.params?.id;
       const docId = req?.params?.docId;
-      console.log(templateID, docId);
 
       const result = await TemplateModel.updateOne(
         { id: templateID },
@@ -338,11 +338,12 @@ router.get(
 
 router.get("/requests", async (req, res, next) => {
   try {
-    const userId = req?.session?.userId;
+    const user = req?.session?.userId;
     const requests = await TemplateModel.find({
-      $and: [{ status: status.active }, { assignedTo: userId }],
+      status: status.active,
+      $or: [{ createdBy: user }, { assignedTo: user }],
     });
-    return res.json({requests});
+    return res.json({ requests });
   } catch (error) {
     next(error);
   }
