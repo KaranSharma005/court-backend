@@ -22,7 +22,7 @@ export function createSocketServer(server) {
 
     io.on("connection", (socket) => {
         if (!socket.request.session.userId) {
-            console.log("disconnect");
+            console.log("l;knwf ");
             
             return socket.disconnect();
         }

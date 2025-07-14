@@ -12,6 +12,7 @@ import { docPreview } from "../../utilities/preview.js";
 import mongoose from "mongoose";
 import path from "path";
 import ExcelJS from "exceljs";
+import { log } from "util";
 const router = Router();
 const __dirname = import.meta.dirname;
 router.post(
@@ -82,6 +83,7 @@ router.post(
 router.get("/getAll", checkLoginStatus, async (req, res) => {
   try {
     const user = req?.session?.userId;
+    
     const templatesData = await TemplateModel.find({
       status: status.active,
       $or: [{ createdBy: user }, { assignedTo: user }],
@@ -172,111 +174,111 @@ router.post(
       next();
     });
   },
-  async (req, res, next) => {
-    try {
-      const file = req?.file;
-      if (!file) return res.status(400).json({ error: "No file uploaded" });
+    async (req, res, next) => {
+      try {
+        const file = req?.file;
+        if (!file) return res.status(400).json({ error: "No file uploaded" });
 
-      const templateId = req?.params?.id;
-      if (!mongoose.Types.ObjectId.isValid(templateId)) {
-        return res.status(400).json({ error: "Invalid template ID" });
-      }
+        const templateId = req?.params?.id;
+        if (!mongoose.Types.ObjectId.isValid(templateId)) {
+          return res.status(400).json({ error: "Invalid template ID" });
+        }
 
-      const template = await TemplateModel.findOne({
-        id: new mongoose.Types.ObjectId(templateId),
-      });
-      if (!template)
-        return res.status(404).json({ error: "Template not found" });
+        const template = await TemplateModel.findOne({
+          id: new mongoose.Types.ObjectId(templateId),
+        });
+        if (!template)
+          return res.status(404).json({ error: "Template not found" });
 
-      const filePath = path.join(
-        process.cwd(),
-        "/app/public/excel",
-        file.filename
-      );
-      const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.readFile(filePath);
+        const filePath = path.join(
+          process.cwd(),
+          "/app/public/excel",
+          file.filename
+        );
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.readFile(filePath);
 
-      const worksheet = workbook.getWorksheet(1);
-      const keys = template.templateVariables.map((v) => v.name);
-      const expectedLength = keys.length;
+        const worksheet = workbook.getWorksheet(1);
+        const keys = template.templateVariables.map((v) => v.name);
+        const expectedLength = keys.length;
 
-      const arrayOfRow = [];
-      worksheet.eachRow((row, rowNumber) => {
-        if (rowNumber === 1) return;
-        arrayOfRow.push(row.values);
-      });
-      const completeRows = arrayOfRow.filter(
-        (row) => row.length - 1 === expectedLength
-      );
+        const arrayOfRow = [];
+        worksheet.eachRow((row, rowNumber) => {
+          if (rowNumber === 1) return;
+          arrayOfRow.push(row.values);
+        });
+        const completeRows = arrayOfRow.filter(
+          (row) => row.length - 1 === expectedLength
+        );
 
-      const rowsToSend = completeRows.map((row) => {
-        row.shift();
-        return row;
-      });
-
-      const formattedRows = rowsToSend.map((row) => {
-        const rowData = {};
-        keys.forEach((key, i) => {
-          rowData[key] = String(row[i] ?? "");
+        const rowsToSend = completeRows.map((row) => {
+          row.shift();
+          return row;
         });
 
-        return {
-          id: new mongoose.Types.ObjectId(),
-          data: rowData,
-        };
-      });
+        const formattedRows = rowsToSend.map((row) => {
+          const rowData = {};
+          keys.forEach((key, i) => {
+            rowData[key] = String(row[i] ?? "");
+          });
 
-      const result = await TemplateModel.updateOne(
-        { id: new mongoose.Types.ObjectId(templateId) },
-        { $push: { data: { $each: formattedRows } } }
-      );
-      const allExcelFields = await TemplateModel.find({
-        id: new mongoose.Types.ObjectId(templateId),
-      }).select("data");
-      const finalOutput = allExcelFields[0]?.data;
+          return {
+            id: new mongoose.Types.ObjectId(),
+            data: rowData,
+            signStatus: signStatus.unsigned,
+          };
+        });
 
-      res.json({ finalOutput });
+        const result = await TemplateModel.updateOne(
+          { id: new mongoose.Types.ObjectId(templateId) },
+          { $push: { data: { $each: formattedRows } } }
+        );
+        const allExcelFields = await TemplateModel.find({
+          id: new mongoose.Types.ObjectId(templateId),
+        }).select("data");
+        const finalOutput = allExcelFields[0]?.data;
+        res.json({ finalOutput });
+      } catch (error) {
+        next(error);
+      }
+    }
+  );
+
+  router.get("/extractFields/:id", checkLoginStatus, async (req, res, next) => {
+    try {
+      const templateId = req?.params?.id;
+      const templateVar = await TemplateModel.findOne({
+        id: templateId,
+      }).select("templateVariables");
+
+      const temp = await TemplateModel.findOne({
+        id: templateId,
+      }).select("templateName assignedTo");
+      const assignedToExists = temp?.assignedTo ? true : false;
+      const name = temp?.templateName;
+
+      return res.json({ templateVar, name, assignedToExists });
     } catch (error) {
       next(error);
     }
-  }
-);
-
-router.get("/extractFields/:id", checkLoginStatus, async (req, res, next) => {
-  try {
-    const templateId = req?.params?.id;
-    const templateVar = await TemplateModel.findOne({
-      id: templateId,
-    }).select("templateVariables");
-
-    const temp = await TemplateModel.findOne({
-      id: templateId,
-    }).select("templateName assignedTo");
-    const assignedToExists = temp?.assignedTo ? true : false;
-    const name = temp?.templateName;
-
-    return res.json({ templateVar, name, assignedToExists });
-  } catch (error) {
-    next(error);
-  }
 });
 
 router.get("/getAll/:id", checkLoginStatus, async (req, res, next) => {
   try {
     const id = req?.params?.id;
+    
     const allExcelFields = await TemplateModel.find({
       id: new mongoose.Types.ObjectId(id),
     }).select("data status");
+    
     const finalOutput = allExcelFields[0]?.data;
-
-    const assignedDocs = await TemplateModel.find({
-      assignedTo: { $exists: true, $ne: null },
-    });
-    let isDispatched = false;
-    if (assignedDocs.length != 0) {
-      isDispatched = true;
-    }
-    res.json({ finalOutput });
+    
+    const templateDoc = await TemplateModel.findOne({
+      id: id,
+    }).select("assignedTo");
+    const isDispatched = !!templateDoc?.assignedTo;
+    
+    res.json({ finalOutput, isDispatched });
   } catch (error) {
     next(error);
   }
