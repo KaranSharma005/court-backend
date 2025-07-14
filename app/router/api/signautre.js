@@ -165,4 +165,20 @@ router.delete("/rejectAll/:tempId", async (req, res, next) => {
   }
 });
 
+router.patch("/delegate/:tempId", async (req, res, next) =>{
+  try{
+    const templateID = req?.params?.tempId;
+    const updatedTemplate = await TemplateModel.findOneAndUpdate(
+      {id : templateID},
+      {signStatus : signStatus.delegated},
+      {new : true}
+    )
+    console.log(updatedTemplate);
+    return res.json({msg : "Delegated Successfully"});
+  } 
+  catch(error){
+    next(error);
+  }
+})
+
 export default router;
