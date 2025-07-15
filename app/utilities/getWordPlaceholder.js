@@ -14,7 +14,14 @@ export function extractFields(path) {
   const text = doc.getFullText();
 
   const matches = [...text.matchAll(/\{(.*?)\}/g)];
-  const fields = [...new Set(matches.map(m => m[1]))];
+  // const fields = [...new Set(matches.map(m => m[1]))];
+  const fields = [
+    ...new Set(
+      matches
+        .map(m => m[1])
+        .filter(field => !field.toLowerCase().startsWith("%image:"))
+    ),
+  ];
 
   console.log(fields);
   return fields;

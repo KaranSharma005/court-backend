@@ -8,6 +8,13 @@ import { checkLoginStatus } from "../../middleware/checkAuth.js";
 import TemplateModel from "../../models/template.js";
 import { getIO } from "../../config/socket.js";
 import mongoose from "mongoose";
+import PizZip from "pizzip";
+import Docxtemplater from "docxtemplater";
+import convertpdf from "libreoffice-convert";
+import ImageModule from "docxtemplater-image-module-free";
+import fs from "fs";
+import path from "path";
+
 const router = Router();
 
 router.post(
@@ -153,32 +160,138 @@ router.delete("/rejectAll/:tempId", async (req, res, next) => {
         $set: {
           "data.$[].signStatus": signStatus.rejected,
           "data.$[].rejectionReason": reason,
-          signStatus : signStatus.rejected
+          signStatus: signStatus.rejected,
         },
       },
       { new: true }
     );
-    
-    return res.json({msg : "All documents rejecteed"});
+
+    return res.json({ msg: "All documents rejecteed" });
   } catch (error) {
     next(error);
   }
 });
 
-router.patch("/delegate/:tempId", async (req, res, next) =>{
-  try{
+router.patch("/delegate/:tempId", async (req, res, next) => {
+  try {
     const templateID = req?.params?.tempId;
     const updatedTemplate = await TemplateModel.findOneAndUpdate(
-      {id : templateID},
-      {signStatus : signStatus.delegated},
-      {new : true}
-    )
+      { id: templateID },
+      { signStatus: signStatus.delegated },
+      { new: true }
+    );
     console.log(updatedTemplate);
-    return res.json({msg : "Delegated Successfully"});
-  } 
-  catch(error){
+    return res.json({ msg: "Delegated Successfully" });
+  } catch (error) {
     next(error);
   }
-})
+});
+
+router.post("/sign/:tempId", async (req, res, next) => {
+  try {
+    const tempId = req?.params?.tempId;
+    const selectedSign = req?.body?.url;
+    if (!tempId || !selectedSign) {
+      return res.status(403).json({ msg: "Unauthorized access" });
+    }
+
+    const templateDoc = await TemplateModel.findOne({ id: tempId });
+    if (!templateDoc) {
+      return res.status(404).json({ error: "Template not found" });
+    }
+
+    const templatePath = templateDoc?.url;
+    if (!fs.existsSync(templatePath)) {
+      return res.status(404).json({ error: "Template file not found" });
+    }
+
+    const signaturePath = path.resolve(
+      selectedSign.replace(
+        "http://localhost:3000/signature",
+        "app/public/signatures/"
+      )
+    );
+    if (!fs.existsSync(signaturePath)) {
+      return res
+        .status(404)
+        .json({ error: "Signature image not found", path: signaturePath });
+    }
+
+    const fileContent = fs.readFileSync(templatePath, "binary");
+    const signedRecords = [];
+
+    for (const record of templateDoc.data) {
+      try {
+        const recordData =
+          record.data instanceof Map
+            ? Object.fromEntries(record.data.entries())
+            : record.data;
+
+        recordData["image:signature"] = signaturePath;
+
+        const zip = new PizZip(fileContent);
+        const imageModule = new ImageModule({
+          centered: false,
+          getImage: (tag) => fs.readFileSync(tag),
+          getSize: () => [150, 50],
+        });
+
+        const doc = new Docxtemplater(zip, {
+          paragraphLoop: true,
+          linebreaks: true,
+          modules: [imageModule],
+        });
+
+        doc.render(recordData);
+        const buffer = doc.getZip().generate({ type: "nodebuffer" });
+
+        const timestamp = Date.now();
+        const docxPath = path.resolve(process.cwd(),"app/public/signed",`${timestamp}_signed.docx`);
+
+        fs.writeFileSync(docxPath, buffer);
+        const docxBuf = fs.readFileSync(docxPath);
+        const pdfBuf = await new Promise((resolve, reject) => {
+          convertpdf.convert(docxBuf, ".pdf", undefined, (err, done) => {
+            if (err) reject(err);
+            else resolve(done);
+          });
+        });
+        const finalPdfPath = docxPath.replace(".docx", ".pdf");
+        fs.writeFileSync(finalPdfPath, pdfBuf);
+
+        record.url = finalPdfPath;
+        record.signStatus = 5;
+        record.signedDate = new Date();
+        record.pdfPath = finalPdfPath;
+
+        signedRecords.push({
+          recordId: record.id,
+          finalPdfPath,
+        });
+      } catch (recordError) {
+        console.warn(
+          `Failed to sign record ${record.id}:`,
+          recordError.message
+        );
+      }
+      await templateDoc.save();
+    }
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/getSignatures", async (req, res, next) => {
+  try {
+    const userId = req?.session?.userId;
+    const allSignature = await Signature.find({
+      userId,
+      status: status.active,
+    }).select("url -_id");
+    return res.json({ allSignature });
+  } catch (error) {
+    next(error);
+  }
+});
 
 export default router;
