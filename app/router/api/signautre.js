@@ -187,10 +187,13 @@ router.patch("/delegate/:tempId", async (req, res, next) => {
   }
 });
 
-router.post("/sign/:tempId", async (req, res, next) => {
+router.post("/sign/:tempId/:id", async (req, res, next) => {
   try {
     const tempId = req?.params?.tempId;
     const selectedSign = req?.body?.url;
+    const userId = req?.session?.userId;
+    const signId = req?.params?.id;
+    
     if (!tempId || !selectedSign) {
       return res.status(403).json({ msg: "Unauthorized access" });
     }
@@ -269,11 +272,13 @@ router.post("/sign/:tempId", async (req, res, next) => {
           finalPdfPath,
         });
       } catch (recordError) {
-        console.warn(
+        console.log(
           `Failed to sign record ${record.id}:`,
           recordError.message
         );
       }
+      templateDoc.signedBy = userId;
+      templateDoc.signatureId = signId;
       await templateDoc.save();
     }
   } catch (error) {
@@ -287,7 +292,7 @@ router.get("/getSignatures", async (req, res, next) => {
     const allSignature = await Signature.find({
       userId,
       status: status.active,
-    }).select("url -_id");
+    }).select("url id -_id");
     return res.json({ allSignature });
   } catch (error) {
     next(error);
