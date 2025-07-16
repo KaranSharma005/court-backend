@@ -5,13 +5,13 @@ import TemplateModel from "../../models/template.js";
 import { status, signStatus } from "../../constants/index.js";
 import { extractFields } from "../../utilities/getWordPlaceholder.js";
 import { checkLoginStatus } from "../../middleware/checkAuth.js";
-import { isOfficer, isReader } from "../../middleware/checkuser.js";
 import multer from "multer";
 import { convertDocToPdf } from "../../utilities/preview.js";
 import { docPreview } from "../../utilities/preview.js";
 import mongoose from "mongoose";
 import path from "path";
 import ExcelJS from "exceljs";
+import fs from 'fs';
 const router = Router();
 const __dirname = import.meta.dirname;
 router.post(
@@ -19,13 +19,10 @@ router.post(
   checkLoginStatus,
   (req, res, next) => {
     upload.single("file")(req, res, function (err) {
-      if (err instanceof multer.MulterError) {
-        return res
-          .status(400)
-          .json({ msg: "Upload failed", error: err.message });
-      } else if (err) {
-        return res
-          .status(400)
+      if(err instanceof multer.MulterError) {
+        return res.status(400).json({ msg: "Upload failed", error: err.message });
+      }else if (err) {
+        return res.status(400)
           .json({ msg: "Invalid file", error: err.message });
       }
 
@@ -207,8 +204,8 @@ router.post(
         arrayOfRow.push(row.values);
       });
       const filteredRows = arrayOfRow.map((row) => {
-        row.shift(); 
-        return row.slice(0, expectedLength); 
+        row.shift();
+        return row.slice(0, expectedLength);
       });
 
       const formattedRows = filteredRows.map((row) => {
@@ -232,6 +229,7 @@ router.post(
         id: new mongoose.Types.ObjectId(templateId),
       }).select("data");
       const finalOutput = allExcelFields[0]?.data;
+      console.log(finalOutput);
       res.json({ finalOutput });
     } catch (error) {
       next(error);
@@ -333,7 +331,7 @@ router.get(
   }
 );
 
-router.get("/requests", async (req, res, next) => {
+router.get("/requests",checkLoginStatus, async (req, res, next) => {
   try {
     const user = req?.session?.userId;
     const requests = await TemplateModel.find({
@@ -346,7 +344,7 @@ router.get("/requests", async (req, res, next) => {
   }
 });
 
-router.get("/rejected/:tempId", async (req, res, next) => {
+router.get("/rejected/:tempId",checkLoginStatus, async (req, res, next) => {
   try {
     const templateId = req?.params?.tempId;
     const template = await TemplateModel.find({ id: templateId }).select(
@@ -357,6 +355,26 @@ router.get("/rejected/:tempId", async (req, res, next) => {
     );
 
     return res.json({ rejectedDoc });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get("/sign-preview/:templateID/:id",checkLoginStatus, async (req, res, next) => {
+  try {
+    const templateId = req?.params?.templateID;
+    const docId = req?.params?.id;
+    const template = await TemplateModel.findOne({ id: templateId },{ data: 1 });
+    const doc = template?.data?.find((ele) => ele.id == docId);
+    const filePath = path.join(process.cwd(),"app", "public", "signed", doc?.url);
+    console.log(filePath);
+    
+    const fileBuffer = await fs.readFileSync(filePath);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline'); 
+
+    res.send(fileBuffer);
+
   } catch (error) {
     next(error);
   }

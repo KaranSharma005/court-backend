@@ -12,8 +12,13 @@ const router = Router();
 router.get("/getOfficers",checkLoginStatus, async (req, res, next) => {
   try{
     const courtId = req?.session?.courtId;
+    const userId = req?.session?.userId;
+    console.log(userId);
     
-    const officers = await UserModel.find({ role : roles.officer, courtId}).select("name email id -_id");
+    const officers = await UserModel.find({ role : roles.officer, courtId,
+       id: { $ne: userId }
+    }).select("name email id -_id");
+    
     return res.json({officers});
   }
   catch(error){

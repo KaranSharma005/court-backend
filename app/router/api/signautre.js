@@ -120,7 +120,7 @@ router.post(
   }
 );
 
-router.delete("/reject/:tempId/:docId", async (req, res, next) => {
+router.delete("/reject/:tempId/:docId",checkLoginStatus, async (req, res, next) => {
   try {
     const templateID = req?.params?.tempId;
     const docId = req?.params?.docId;
@@ -146,7 +146,7 @@ router.delete("/reject/:tempId/:docId", async (req, res, next) => {
   }
 });
 
-router.delete("/rejectAll/:tempId", async (req, res, next) => {
+router.delete("/rejectAll/:tempId",checkLoginStatus, async (req, res, next) => {
   try {
     const templateID = req?.params?.tempId;
     const reason = req?.body?.reason;
@@ -172,7 +172,7 @@ router.delete("/rejectAll/:tempId", async (req, res, next) => {
   }
 });
 
-router.patch("/delegate/:tempId", async (req, res, next) => {
+router.patch("/delegate/:tempId",checkLoginStatus, async (req, res, next) => {
   try {
     const templateID = req?.params?.tempId;
     const updatedTemplate = await TemplateModel.findOneAndUpdate(
@@ -187,7 +187,7 @@ router.patch("/delegate/:tempId", async (req, res, next) => {
   }
 });
 
-router.post("/sign/:tempId/:id", async (req, res, next) => {
+router.post("/sign/:tempId/:id",checkLoginStatus, async (req, res, next) => {
   try {
     const tempId = req?.params?.tempId;
     const selectedSign = req?.body?.url;
@@ -199,6 +199,7 @@ router.post("/sign/:tempId/:id", async (req, res, next) => {
     }
 
     const templateDoc = await TemplateModel.findOne({ id: tempId });
+    const createdBy = templateDoc?.createdBy.toString();
     if (!templateDoc) {
       return res.status(404).json({ error: "Template not found" });
     }
@@ -222,13 +223,14 @@ router.post("/sign/:tempId/:id", async (req, res, next) => {
 
     const fileContent = fs.readFileSync(templatePath, "binary");
     const signedRecords = [];
-
+    const io = getIO();
+    io.to(userId).emit("processing-sign", tempId);
+    io.to(createdBy).emit("processing-sign", tempId);
     for (const record of templateDoc.data) {
       try {
-        const recordData =
-          record.data instanceof Map
-            ? Object.fromEntries(record.data.entries())
-            : record.data;
+        if(record?.signStatus == signStatus.rejected)
+          continue;
+        const recordData = record.data instanceof Map ? Object.fromEntries(record.data.entries()) : record.data;
 
         recordData["image:signature"] = signaturePath;
 
@@ -262,10 +264,9 @@ router.post("/sign/:tempId/:id", async (req, res, next) => {
         const finalPdfPath = docxPath.replace(".docx", ".pdf");
         fs.writeFileSync(finalPdfPath, pdfBuf);
 
-        record.url = finalPdfPath;
+        record.url = `${timestamp}_signed.pdf`;
         record.signStatus = 5;
         record.signedDate = new Date();
-        record.pdfPath = finalPdfPath;
 
         signedRecords.push({
           recordId: record.id,
@@ -279,14 +280,18 @@ router.post("/sign/:tempId/:id", async (req, res, next) => {
       }
       templateDoc.signedBy = userId;
       templateDoc.signatureId = signId;
+      templateDoc.signStatus = signStatus.Signed;
       await templateDoc.save();
     }
+    io.to(userId).emit("sign-complete", tempId);
+    io.to(createdBy).emit("sign-complete", tempId);
+    return res.json({msg : "Signed successfully"});
   } catch (error) {
     next(error);
   }
 });
 
-router.get("/getSignatures", async (req, res, next) => {
+router.get("/getSignatures",checkLoginStatus, async (req, res, next) => {
   try {
     const userId = req?.session?.userId;
     const allSignature = await Signature.find({

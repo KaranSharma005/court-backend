@@ -37,7 +37,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/signature", express.static(path.join(__dirname, '../app/public/signatures')));
-app.use(['/template', '/templates'], express.static(path.join(__dirname, "../app/public/uploads")));
+app.use(['/template', '/templates'], express.static(path.join(__dirname, "../app/public")));
 app.use('/', router);
 
 app.use((error, req, res, next) => {

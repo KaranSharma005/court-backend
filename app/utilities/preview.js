@@ -6,7 +6,6 @@ import Docxtemplater from "docxtemplater";
 export const convertDocToPdf = async (inputPath) => {
   try {
     const docxBuf = fs.readFileSync(inputPath);
-    console.log(inputPath);
     const pdfBuf = await new Promise((resolve, reject) => {
       libre.convert(docxBuf, ".pdf", undefined, (err, done) => {
         if (err) {
