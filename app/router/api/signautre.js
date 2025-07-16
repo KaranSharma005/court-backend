@@ -104,9 +104,11 @@ router.post(
       const templateID = req?.params?.templateID;
       const userIdToSend = req?.params?.id;
 
-      const template = await TemplateModel.findOne({id : templateID}).select("data signStatus");
-      if(template?.signStatus != 0 && template?.data?.length == 0){
-        return res.send(403).json({msg : "Unauthorized request"});
+      const template = await TemplateModel.findOne({ id: templateID }).select(
+        "data signStatus"
+      );
+      if (template?.signStatus != 0 && template?.data?.length == 0) {
+        return res.send(403).json({ msg: "Unauthorized request" });
       }
 
       const result = await TemplateModel.findOneAndUpdate(
@@ -127,59 +129,67 @@ router.post(
   }
 );
 
-router.delete("/reject/:tempId/:docId",checkLoginStatus, async (req, res, next) => {
-  try {
-    const templateID = req?.params?.tempId;
-    const docId = req?.params?.docId;
-    const reason = req?.body?.reason;
-    if (req?.session?.role != 2) {
-      return res.status(403).json({ msg: "Unauthorized access" });
-    }
+router.delete(
+  "/reject/:tempId/:docId",
+  checkLoginStatus,
+  async (req, res, next) => {
+    try {
+      const templateID = req?.params?.tempId;
+      const docId = req?.params?.docId;
+      const reason = req?.body?.reason;
+      if (req?.session?.role != 2) {
+        return res.status(403).json({ msg: "Unauthorized access" });
+      }
 
-    const updatedTemplate = await TemplateModel.findOneAndUpdate(
-      { id: templateID, "data.id": docId },
-      {
-        $set: {
-          "data.$.signStatus": signStatus.rejected,
-          "data.$.rejectionReason": reason,
+      const updatedTemplate = await TemplateModel.findOneAndUpdate(
+        { id: templateID, "data.id": docId },
+        {
+          $set: {
+            "data.$.signStatus": signStatus.rejected,
+            "data.$.rejectionReason": reason,
+          },
         },
-      },
-      { new: true }
-    );
+        { new: true }
+      );
 
-    return res.json({ msg: "Template Rejected" });
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.delete("/rejectAll/:tempId",checkLoginStatus, async (req, res, next) => {
-  try {
-    const templateID = req?.params?.tempId;
-    const reason = req?.body?.reason;
-    if (req?.session?.role != 2) {
-      return res.status(403).json({ msg: "Unauthorized access" });
+      return res.json({ msg: "Template Rejected" });
+    } catch (error) {
+      next(error);
     }
-
-    const updatedTemplate = await TemplateModel.findOneAndUpdate(
-      { id: templateID },
-      {
-        $set: {
-          "data.$[].signStatus": signStatus.rejected,
-          "data.$[].rejectionReason": reason,
-          signStatus: signStatus.rejected,
-        },
-      },
-      { new: true }
-    );
-
-    return res.json({ msg: "All documents rejecteed" });
-  } catch (error) {
-    next(error);
   }
-});
+);
 
-router.patch("/delegate/:tempId",checkLoginStatus, async (req, res, next) => {
+router.delete(
+  "/rejectAll/:tempId",
+  checkLoginStatus,
+  async (req, res, next) => {
+    try {
+      const templateID = req?.params?.tempId;
+      const reason = req?.body?.reason;
+      if (req?.session?.role != 2) {
+        return res.status(403).json({ msg: "Unauthorized access" });
+      }
+
+      const updatedTemplate = await TemplateModel.findOneAndUpdate(
+        { id: templateID },
+        {
+          $set: {
+            "data.$[].signStatus": signStatus.rejected,
+            "data.$[].rejectionReason": reason,
+            signStatus: signStatus.rejected,
+          },
+        },
+        { new: true }
+      );
+
+      return res.json({ msg: "All documents rejecteed" });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+router.patch("/delegate/:tempId", checkLoginStatus, async (req, res, next) => {
   try {
     const templateID = req?.params?.tempId;
     const updatedTemplate = await TemplateModel.findOneAndUpdate(
@@ -193,13 +203,13 @@ router.patch("/delegate/:tempId",checkLoginStatus, async (req, res, next) => {
   }
 });
 
-router.post("/sign/:tempId/:id",checkLoginStatus, async (req, res, next) => {
+router.post("/sign/:tempId/:id", checkLoginStatus, async (req, res, next) => {
   try {
     const tempId = req?.params?.tempId;
     const selectedSign = req?.body?.url;
     const userId = req?.session?.userId;
     const signId = req?.params?.id;
-    
+
     if (!tempId || !selectedSign) {
       return res.status(403).json({ msg: "Unauthorized access" });
     }
@@ -232,11 +242,14 @@ router.post("/sign/:tempId/:id",checkLoginStatus, async (req, res, next) => {
     const io = getIO();
     io.to(userId).emit("processing-sign", tempId);
     io.to(createdBy).emit("processing-sign", tempId);
+    let count = 0;
     for (const record of templateDoc.data) {
       try {
-        if(record?.signStatus == signStatus.rejected)
-          continue;
-        const recordData = record.data instanceof Map ? Object.fromEntries(record.data.entries()) : record.data;
+        if (record?.signStatus == signStatus.rejected) continue;
+        const recordData =
+          record.data instanceof Map
+            ? Object.fromEntries(record.data.entries())
+            : record.data;
 
         recordData["image:signature"] = signaturePath;
 
@@ -257,7 +270,11 @@ router.post("/sign/:tempId/:id",checkLoginStatus, async (req, res, next) => {
         const buffer = doc.getZip().generate({ type: "nodebuffer" });
 
         const timestamp = Date.now();
-        const docxPath = path.resolve(process.cwd(),"app/public/signed",`${timestamp}_signed.docx`);
+        const docxPath = path.resolve(
+          process.cwd(),
+          "app/public/signed",
+          `${timestamp}_signed.docx`
+        );
 
         fs.writeFileSync(docxPath, buffer);
         const docxBuf = fs.readFileSync(docxPath);
@@ -279,25 +296,27 @@ router.post("/sign/:tempId/:id",checkLoginStatus, async (req, res, next) => {
           finalPdfPath,
         });
       } catch (recordError) {
-        console.log(
-          `Failed to sign record ${record.id}:`,
-          recordError.message
-        );
+        console.log(`Failed to sign record ${record.id}:`, recordError.message);
       }
-      templateDoc.signedBy = userId;
-      templateDoc.signatureId = signId;
-      templateDoc.signStatus = signStatus.Signed;
+      templateDoc.signStatus = signStatus.inProcess;
       await templateDoc.save();
+      count++;
+      io.to(userId).emit("sign-count", count);
+      io.to(createdBy).emit("sign-count", count);
     }
+    templateDoc.signedBy = userId;
+    templateDoc.signatureId = signId;
+    templateDoc.signStatus = signStatus.Signed;
+    await templateDoc.save();
     io.to(userId).emit("sign-complete", tempId);
     io.to(createdBy).emit("sign-complete", tempId);
-    return res.json({msg : "Signed successfully"});
+    return res.json({ msg: "Signed successfully" });
   } catch (error) {
     next(error);
   }
 });
 
-router.get("/getSignatures",checkLoginStatus, async (req, res, next) => {
+router.get("/getSignatures", checkLoginStatus, async (req, res, next) => {
   try {
     const userId = req?.session?.userId;
     const allSignature = await Signature.find({
