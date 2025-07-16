@@ -109,6 +109,11 @@ router.delete("/delete/:id", checkLoginStatus, async (req, res) => {
     const user = req?.session?.userId;
     const id = req?.params?.id;
 
+    const template = await TemplateModel.find({id}).select("signStatus");
+    if(template[0]?.signStatus != signStatus?.unsigned){
+      return res.status(403).json({msg : "Unauthorized access"});
+    }
+    
     await TemplateModel.updateOne(
       { id: id },
       { status: status.deleted },
@@ -176,16 +181,15 @@ router.post(
       if (!file) return res.status(400).json({ error: "No file uploaded" });
 
       const templateId = req?.params?.id;
-      if (!mongoose.Types.ObjectId.isValid(templateId)) {
-        return res.status(400).json({ error: "Invalid template ID" });
-      }
-
       const template = await TemplateModel.findOne({
         id: new mongoose.Types.ObjectId(templateId),
       });
-      if (!template)
+      if (!template){
         return res.status(404).json({ error: "Template not found" });
-
+      }
+      if(template?.signStatus != signStatus?.unsigned){
+        return res.status(403).json({error : "CAn't upload more data"});
+      }
       const filePath = path.join(
         process.cwd(),
         "/app/public/excel",
@@ -229,7 +233,6 @@ router.post(
         id: new mongoose.Types.ObjectId(templateId),
       }).select("data");
       const finalOutput = allExcelFields[0]?.data;
-      console.log(finalOutput);
       res.json({ finalOutput });
     } catch (error) {
       next(error);
@@ -284,7 +287,11 @@ router.delete(
     try {
       const templateID = req?.params?.id;
       const docId = req?.params?.docId;
-
+      const template = await TemplateModel.findOne({id : templateID}).select("signStatus");
+      if(template?.signStatus != signStatus.unsigned){
+        return res.status(403).json({msg : "No access to delete"});
+      }
+      
       const result = await TemplateModel.updateOne(
         { id: templateID },
         {
@@ -367,7 +374,6 @@ router.get("/sign-preview/:templateID/:id",checkLoginStatus, async (req, res, ne
     const template = await TemplateModel.findOne({ id: templateId },{ data: 1 });
     const doc = template?.data?.find((ele) => ele.id == docId);
     const filePath = path.join(process.cwd(),"app", "public", "signed", doc?.url);
-    console.log(filePath);
     
     const fileBuffer = await fs.readFileSync(filePath);
     res.setHeader('Content-Type', 'application/pdf');

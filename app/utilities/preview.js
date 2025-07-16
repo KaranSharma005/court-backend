@@ -32,6 +32,7 @@ export const docPreview = async (pdfFields, path) => {
     const doc = new Docxtemplater(zip, {
       paragraphLoop: true,
       linebreaks: true,
+      nullGetter: () => "",
     });
 
     try {

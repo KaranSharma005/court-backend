@@ -14,6 +14,7 @@ import convertpdf from "libreoffice-convert";
 import ImageModule from "docxtemplater-image-module-free";
 import fs from "fs";
 import path from "path";
+import { Template } from "ejs";
 
 const router = Router();
 
@@ -102,6 +103,12 @@ router.post(
     try {
       const templateID = req?.params?.templateID;
       const userIdToSend = req?.params?.id;
+
+      const template = await TemplateModel.findOne({id : templateID}).select("data signStatus");
+      if(template?.signStatus != 0 && template?.data?.length == 0){
+        return res.send(403).json({msg : "Unauthorized request"});
+      }
+
       const result = await TemplateModel.findOneAndUpdate(
         { id: templateID },
         { assignedTo: userIdToSend, signStatus: signStatus.readForSign },
@@ -180,7 +187,6 @@ router.patch("/delegate/:tempId",checkLoginStatus, async (req, res, next) => {
       { signStatus: signStatus.delegated },
       { new: true }
     );
-    console.log(updatedTemplate);
     return res.json({ msg: "Delegated Successfully" });
   } catch (error) {
     next(error);

@@ -14,7 +14,6 @@ export function extractFields(path) {
   const text = doc.getFullText();
 
   const matches = [...text.matchAll(/\{(.*?)\}/g)];
-  // const fields = [...new Set(matches.map(m => m[1]))];
   const fields = [
     ...new Set(
       matches
@@ -23,6 +22,5 @@ export function extractFields(path) {
     ),
   ];
 
-  console.log(fields);
   return fields;
 }
