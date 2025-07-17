@@ -8,30 +8,22 @@ import { checkLoginStatus } from "../../middleware/checkAuth.js";
 import TemplateModel from "../../models/template.js";
 import { getIO } from "../../config/socket.js";
 import mongoose from "mongoose";
-import PizZip from "pizzip";
+import PizZip from "pizzip";  
 import Docxtemplater from "docxtemplater";
 import convertpdf from "libreoffice-convert";
 import ImageModule from "docxtemplater-image-module-free";
 import fs from "fs";
 import path from "path";
-import { Template } from "ejs";
 
 const router = Router();
 
-router.post(
-  "/addSignature",
-  (req, res, next) => {
+router.post("/addSignature",(req, res, next) => {
     signatureUpload.single("signature")(req, res, function (err) {
       if (err instanceof multer.MulterError) {
-        return res
-          .status(400)
-          .json({ msg: "Upload failed", error: err.message });
+        return res.status(400).json({ msg: "Upload failed", error: err.message });
       } else if (err) {
-        return res
-          .status(400)
-          .json({ msg: "Invalid file", error: err.message });
+        return res.status(400).json({ msg: "Invalid file", error: err.message });
       }
-
       next();
     });
   },
@@ -63,10 +55,7 @@ router.post(
 router.get("/getAll", async (req, res, next) => {
   try {
     const user = req?.session?.userId;
-    const allURL = await Signature.find({
-      createdBy: user,
-      status: status.active,
-    }).select("url");
+    const allURL = await Signature.find({createdBy: user,status: status.active,}).select("url");
     return res.json({ allURL });
   } catch (error) {
     next(error);
@@ -80,15 +69,8 @@ router.delete("/delete/:id", async (req, res, next) => {
     id = new mongoose.Types.ObjectId(cleanId);
     const user = req?.session?.userId;
 
-    await Signature.updateOne(
-      { _id: id },
-      { status: status.deleted },
-      { new: true }
-    );
-    const allURL = await Signature.find({
-      createdBy: user,
-      status: status.active,
-    }).select("url");
+    await Signature.updateOne({ _id: id },{ status: status.deleted },{ new: true });
+    const allURL = await Signature.find({ createdBy: user,status: status.active,}).select("url");
 
     return res.json({ allURL });
   } catch (error) {
@@ -96,29 +78,21 @@ router.delete("/delete/:id", async (req, res, next) => {
   }
 });
 
-router.post(
-  "/sendForSign/:templateID/:id",
-  checkLoginStatus,
-  async (req, res, next) => {
+router.post("/sendForSign/:templateID/:id",checkLoginStatus,async (req, res, next) => {
     try {
       const templateID = req?.params?.templateID;
       const userIdToSend = req?.params?.id;
 
-      const template = await TemplateModel.findOne({ id: templateID }).select(
-        "data signStatus"
-      );
+      const template = await TemplateModel.findOne({ id: templateID }).select("data signStatus");
       if (template?.signStatus != 0 && template?.data?.length == 0) {
         return res.send(403).json({ msg: "Unauthorized request" });
       }
 
       const result = await TemplateModel.findOneAndUpdate(
-        { id: templateID },
-        { assignedTo: userIdToSend, signStatus: signStatus.readForSign },
-        { new: true }
+        { id: templateID },{ assignedTo: userIdToSend, signStatus: signStatus.readForSign },{ new: true }
       );
       await TemplateModel.updateOne(
-        { id: templateID },
-        { $set: { "data.$[].signStatus": signStatus.readForSign } }
+        { id: templateID },{ $set: { "data.$[].signStatus": signStatus.readForSign } }
       );
       const io = getIO();
       io.to(userIdToSend).emit("signature-request", result);
@@ -129,10 +103,7 @@ router.post(
   }
 );
 
-router.delete(
-  "/reject/:tempId/:docId",
-  checkLoginStatus,
-  async (req, res, next) => {
+router.delete("/reject/:tempId/:docId",checkLoginStatus,async (req, res, next) => {
     try {
       const templateID = req?.params?.tempId;
       const docId = req?.params?.docId;
@@ -148,10 +119,8 @@ router.delete(
             "data.$.signStatus": signStatus.rejected,
             "data.$.rejectionReason": reason,
           },
-        },
-        { new: true }
+        },{ new: true }
       );
-
       return res.json({ msg: "Template Rejected" });
     } catch (error) {
       next(error);
@@ -159,10 +128,7 @@ router.delete(
   }
 );
 
-router.delete(
-  "/rejectAll/:tempId",
-  checkLoginStatus,
-  async (req, res, next) => {
+router.delete("/rejectAll/:tempId",checkLoginStatus,async (req, res, next) => {
     try {
       const templateID = req?.params?.tempId;
       const reason = req?.body?.reason;
@@ -178,10 +144,8 @@ router.delete(
             "data.$[].rejectionReason": reason,
             signStatus: signStatus.rejected,
           },
-        },
-        { new: true }
+        },{ new: true }
       );
-
       return res.json({ msg: "All documents rejecteed" });
     } catch (error) {
       next(error);
@@ -193,10 +157,12 @@ router.patch("/delegate/:tempId", checkLoginStatus, async (req, res, next) => {
   try {
     const templateID = req?.params?.tempId;
     const updatedTemplate = await TemplateModel.findOneAndUpdate(
-      { id: templateID },
-      { signStatus: signStatus.delegated },
-      { new: true }
+      { id: templateID, signStatus: { $ne: signStatus.rejected } }, 
+      { signStatus: signStatus.delegated },{ new: true }
     );
+    if (!updatedTemplate) {
+      return res.status(400).json({ msg: "Cannot delegate. Already rejected or template not found." });
+    }
     return res.json({ msg: "Delegated Successfully" });
   } catch (error) {
     next(error);
@@ -224,17 +190,11 @@ router.post("/sign/:tempId/:id", checkLoginStatus, async (req, res, next) => {
     if (!fs.existsSync(templatePath)) {
       return res.status(404).json({ error: "Template file not found" });
     }
-
     const signaturePath = path.resolve(
-      selectedSign.replace(
-        "http://localhost:3000/signature",
-        "app/public/signatures/"
-      )
+      selectedSign.replace("http://localhost:3000/signature","app/public/signatures/")
     );
     if (!fs.existsSync(signaturePath)) {
-      return res
-        .status(404)
-        .json({ error: "Signature image not found", path: signaturePath });
+      return res.status(404).json({ error: "Signature image not found", path: signaturePath });
     }
 
     const fileContent = fs.readFileSync(templatePath, "binary");
@@ -246,11 +206,7 @@ router.post("/sign/:tempId/:id", checkLoginStatus, async (req, res, next) => {
     for (const record of templateDoc.data) {
       try {
         if (record?.signStatus == signStatus.rejected) continue;
-        const recordData =
-          record.data instanceof Map
-            ? Object.fromEntries(record.data.entries())
-            : record.data;
-
+        const recordData = record.data instanceof Map ? Object.fromEntries(record.data.entries()) : record.data;
         recordData["image:signature"] = signaturePath;
 
         const zip = new PizZip(fileContent);
@@ -270,11 +226,7 @@ router.post("/sign/:tempId/:id", checkLoginStatus, async (req, res, next) => {
         const buffer = doc.getZip().generate({ type: "nodebuffer" });
 
         const timestamp = Date.now();
-        const docxPath = path.resolve(
-          process.cwd(),
-          "app/public/signed",
-          `${timestamp}_signed.docx`
-        );
+        const docxPath = path.resolve(process.cwd(),"app/public/signed",`${timestamp}_signed.docx`);
 
         fs.writeFileSync(docxPath, buffer);
         const docxBuf = fs.readFileSync(docxPath);

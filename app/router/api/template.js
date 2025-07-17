@@ -14,18 +14,14 @@ import ExcelJS from "exceljs";
 import fs from 'fs';
 const router = Router();
 const __dirname = import.meta.dirname;
-router.post(
-  "/addTemplate",
-  checkLoginStatus,
+router.post("/addTemplate",checkLoginStatus,
   (req, res, next) => {
     upload.single("file")(req, res, function (err) {
       if(err instanceof multer.MulterError) {
         return res.status(400).json({ msg: "Upload failed", error: err.message });
       }else if (err) {
-        return res.status(400)
-          .json({ msg: "Invalid file", error: err.message });
+        return res.status(400).json({ msg: "Invalid file", error: err.message });
       }
-
       next();
     });
   },
@@ -35,23 +31,14 @@ router.post(
       const file = req.file;
 
       if (!title || !description || !file) {
-        return res
-          .status(400)
-          .json({ msg: "Title, description, and file are required." });
+        return res.status(400).json({ msg: "Title, description, and file are required." });
       }
 
       const fileUrl = `${file.path}`;
       const fields = extractFields(file.path); //function
-
       const templateVariables = fields.map((field) => {
-        const isExcluded =
-          field.toLowerCase() === "signature" ||
-          field.toLowerCase() === "rq code";
-        return {
-          name: field,
-          required: !isExcluded,
-          showOnExcel: !isExcluded,
-        };
+        const isExcluded = field.toLowerCase() === "signature" || field.toLowerCase() === "rq code";
+        return { name: field, required: !isExcluded, showOnExcel: !isExcluded, };
       });
 
       const newTemplate = new TemplateModel({
@@ -64,12 +51,8 @@ router.post(
         updatedBy: req?.session?.userId,
         templateVariables,
       });
-
       await newTemplate.save();
-
-      return res
-        .status(201)
-        .json({ msg: "Template saved successfully", template: newTemplate });
+      return res.status(201).json({ msg: "Template saved successfully", template: newTemplate });
     } catch (error) {
       next(error);
     }
@@ -79,10 +62,8 @@ router.post(
 router.get("/getAll", checkLoginStatus, async (req, res) => {
   try {
     const user = req?.session?.userId;
-
     const templatesData = await TemplateModel.find({
-      status: status.active,
-      $or: [{ createdBy: user }, { assignedTo: user }],
+      status: status.active,$or: [{ createdBy: user }, { assignedTo: user }],
     });
     return res.json({ templatesData });
   } catch (error) {
@@ -92,9 +73,7 @@ router.get("/getAll", checkLoginStatus, async (req, res) => {
 
 router.get(`/preview/:id`, checkLoginStatus, async (req, res, next) => {
   try {
-    const template = await TemplateModel.findOne({
-      id: req?.params?.id,
-    }).select("url");
+    const template = await TemplateModel.findOne({id: req?.params?.id,}).select("url");
     const pdfBuffer = await convertDocToPdf(template?.url);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", "inline; filename=preview.pdf");
@@ -114,11 +93,7 @@ router.delete("/delete/:id", checkLoginStatus, async (req, res) => {
       return res.status(403).json({msg : "Unauthorized access"});
     }
     
-    await TemplateModel.updateOne(
-      { id: id },
-      { status: status.deleted },
-      { new: true }
-    );
+    await TemplateModel.updateOne({ id: id },{ status: status.deleted },{ new: true });
     const templatesData = await TemplateModel.find({
       status: status.active,
       $or: [{ createdBy: user }, { assignedTo: user }],
@@ -158,20 +133,14 @@ router.post("/clone/:id", checkLoginStatus, async (req, res, next) => {
 });
 
 router.post(
-  "/addExcel/:id",
-  checkLoginStatus,
+  "/addExcel/:id",checkLoginStatus,
   (req, res, next) => {
     excelUpload.single("excelFile")(req, res, function (err) {
       if (err instanceof multer.MulterError) {
-        return res
-          .status(400)
-          .json({ msg: "Upload failed", error: err.message });
+        return res.status(400).json({ msg: "Upload failed", error: err.message });
       } else if (err) {
-        return res
-          .status(400)
-          .json({ msg: "Invalid file", error: err.message });
+        return res.status(400).json({ msg: "Invalid file", error: err.message });
       }
-
       next();
     });
   },
@@ -190,10 +159,7 @@ router.post(
       if(template?.signStatus != signStatus?.unsigned){
         return res.status(403).json({error : "CAn't upload more data"});
       }
-      const filePath = path.join(
-        process.cwd(),
-        "/app/public/excel",
-        file.filename
+      const filePath = path.join(process.cwd(),"/app/public/excel",file.filename
       );
       const workbook = new ExcelJS.Workbook();
       await workbook.xlsx.readFile(filePath);
@@ -243,13 +209,8 @@ router.post(
 router.get("/extractFields/:id", checkLoginStatus, async (req, res, next) => {
   try {
     const templateId = req?.params?.id;
-    const templateVar = await TemplateModel.findOne({
-      id: templateId,
-    }).select("templateVariables");
-
-    const temp = await TemplateModel.findOne({
-      id: templateId,
-    }).select("templateName assignedTo");
+    const templateVar = await TemplateModel.findOne({id: templateId,}).select("templateVariables");
+    const temp = await TemplateModel.findOne({id: templateId,}).select("templateName assignedTo");
     const assignedToExists = temp?.assignedTo ? true : false;
     const name = temp?.templateName;
 
@@ -263,15 +224,10 @@ router.get("/getAll/:id", checkLoginStatus, async (req, res, next) => {
   try {
     const id = req?.params?.id;
 
-    const allExcelFields = await TemplateModel.find({
-      id: new mongoose.Types.ObjectId(id),
-    }).select("data status");
+    const allExcelFields = await TemplateModel.find({id: new mongoose.Types.ObjectId(id),}).select("data status");
 
     const finalOutput = allExcelFields[0]?.data;
-
-    const templateDoc = await TemplateModel.findOne({
-      id: id,
-    }).select("assignedTo");
+    const templateDoc = await TemplateModel.findOne({id: id,}).select("assignedTo");
     const isDispatched = !!templateDoc?.assignedTo;
 
     res.json({ finalOutput, isDispatched });
@@ -280,9 +236,7 @@ router.get("/getAll/:id", checkLoginStatus, async (req, res, next) => {
   }
 });
 
-router.delete(
-  "/deleteDoc/:id/:docId",
-  checkLoginStatus,
+router.delete("/deleteDoc/:id/:docId",checkLoginStatus,
   async (req, res, next) => {
     try {
       const templateID = req?.params?.id;
@@ -294,16 +248,10 @@ router.delete(
       
       const result = await TemplateModel.updateOne(
         { id: templateID },
-        {
-          $pull: {
-            data: { id: docId },
-          },
-        }
+        { $pull: { data: { id: docId } } }
       );
 
-      const allExcelFields = await TemplateModel.find({
-        id: new mongoose.Types.ObjectId(templateID),
-      }).select("data status");
+      const allExcelFields = await TemplateModel.find({ id: new mongoose.Types.ObjectId(templateID) }).select("data status");
       const finalOutput = allExcelFields[0]?.data;
       return res.json({ finalOutput });
     } catch (error) {
@@ -312,23 +260,17 @@ router.delete(
   }
 );
 
-router.get(
-  "/preview/:templateID/:id",
-  checkLoginStatus,
+router.get("/preview/:templateID/:id", checkLoginStatus,
   async (req, res, next) => {
     try {
       const templateId = req?.params?.templateID;
       const id = req?.params?.id;
 
-      const result = await TemplateModel.findOne(
-        { id: templateId, "data.id": id },
-        { "data.$": 1 }
-      ).select("url");
+      const result = await TemplateModel.findOne({ id: templateId, "data.id": id },{ "data.$": 1 }).select("url");
       const dataToFill = result.data[0].data;
       const path = result.url;
 
       const bufferData = await docPreview(dataToFill, path);
-
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", "inline; filename=offer_letter.pdf");
       res.send(bufferData);
@@ -354,9 +296,7 @@ router.get("/requests",checkLoginStatus, async (req, res, next) => {
 router.get("/rejected/:tempId",checkLoginStatus, async (req, res, next) => {
   try {
     const templateId = req?.params?.tempId;
-    const template = await TemplateModel.find({ id: templateId }).select(
-      "data"
-    );
+    const template = await TemplateModel.find({ id: templateId }).select("data");
     const rejectedDoc = template[0]?.data?.filter(
       (doc) => doc.signStatus == signStatus.rejected
     );
@@ -378,9 +318,7 @@ router.get("/sign-preview/:templateID/:id",checkLoginStatus, async (req, res, ne
     const fileBuffer = await fs.readFileSync(filePath);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline'); 
-
     res.send(fileBuffer);
-
   } catch (error) {
     next(error);
   }
