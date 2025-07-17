@@ -3,15 +3,23 @@ import upload from "../../middleware/uploaddata.js";
 import excelUpload from "../../middleware/excelUpload.js";
 import TemplateModel from "../../models/template.js";
 import { status, signStatus } from "../../constants/index.js";
-import { extractFields } from "../../utilities/getWordPlaceholder.js";
 import { checkLoginStatus } from "../../middleware/checkAuth.js";
 import multer from "multer";
-import { convertDocToPdf } from "../../utilities/preview.js";
-import { docPreview } from "../../utilities/preview.js";
 import mongoose from "mongoose";
 import path from "path";
 import ExcelJS from "exceljs";
 import fs from 'fs';
+import { addTemplate } from "../../controller/fileUploadController.js";
+import { getAll, 
+  templatePreview, 
+  getFields, 
+  getDocuments, 
+  documentPreview, 
+  getRequests, 
+  signedPreview
+} from '../../controller/detailController.js'
+import { deleteDocument, deleteTemplate, getRejectedDoc } from "../../controller/deleteController.js";
+import { cloneTemplate } from "../../controller/otherController.js";
 const router = Router();
 const __dirname = import.meta.dirname;
 router.post("/addTemplate",checkLoginStatus,
@@ -25,112 +33,16 @@ router.post("/addTemplate",checkLoginStatus,
       next();
     });
   },
-  async (req, res, next) => {
-    try {
-      const { title, description } = req.body;
-      const file = req.file;
-
-      if (!title || !description || !file) {
-        return res.status(400).json({ msg: "Title, description, and file are required." });
-      }
-
-      const fileUrl = `${file.path}`;
-      const fields = extractFields(file.path); //function
-      const templateVariables = fields.map((field) => {
-        const isExcluded = field.toLowerCase() === "signature" || field.toLowerCase() === "rq code";
-        return { name: field, required: !isExcluded, showOnExcel: !isExcluded, };
-      });
-
-      const newTemplate = new TemplateModel({
-        templateName: title,
-        description,
-        url: fileUrl,
-        status: status.active,
-        signStatus: signStatus.unsigned,
-        createdBy: req?.session?.userId,
-        updatedBy: req?.session?.userId,
-        templateVariables,
-      });
-      await newTemplate.save();
-      return res.status(201).json({ msg: "Template saved successfully", template: newTemplate });
-    } catch (error) {
-      next(error);
-    }
-  }
+  addTemplate
 );
 
-router.get("/getAll", checkLoginStatus, async (req, res) => {
-  try {
-    const user = req?.session?.userId;
-    const templatesData = await TemplateModel.find({
-      status: status.active,$or: [{ createdBy: user }, { assignedTo: user }],
-    });
-    return res.json({ templatesData });
-  } catch (error) {
-    next(error);
-  }
-});
+router.get("/getAll", checkLoginStatus, getAll);
 
-router.get(`/preview/:id`, checkLoginStatus, async (req, res, next) => {
-  try {
-    const template = await TemplateModel.findOne({id: req?.params?.id,}).select("url");
-    const pdfBuffer = await convertDocToPdf(template?.url);
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", "inline; filename=preview.pdf");
-    return res.send(pdfBuffer);
-  } catch (error) {
-    next(error);
-  }
-});
+router.get(`/preview/:id`, checkLoginStatus, templatePreview);
 
-router.delete("/delete/:id", checkLoginStatus, async (req, res) => {
-  try {
-    const user = req?.session?.userId;
-    const id = req?.params?.id;
+router.delete("/delete/:id", checkLoginStatus, deleteTemplate);
 
-    const template = await TemplateModel.find({id}).select("signStatus");
-    if(template[0]?.signStatus != signStatus?.unsigned){
-      return res.status(403).json({msg : "Unauthorized access"});
-    }
-    
-    await TemplateModel.updateOne({ id: id },{ status: status.deleted },{ new: true });
-    const templatesData = await TemplateModel.find({
-      status: status.active,
-      $or: [{ createdBy: user }, { assignedTo: user }],
-    });
-    return res.json({ templatesData });
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.post("/clone/:id", checkLoginStatus, async (req, res, next) => {
-  try {
-    const id = req?.params?.id;
-    const user = req?.session?.userId;
-
-    const template = await TemplateModel.findOne({ id });
-
-    const newTemplate = new TemplateModel({
-      templateName: template.templateName,
-      description: template.description,
-      url: template?.url,
-      status: status?.active,
-      signStatus: signStatus?.unsigned,
-      createdBy: user,
-      updatedBy: user,
-      templateVariables: template.templateVariables,
-    });
-    await newTemplate.save();
-    const templatesData = await TemplateModel.find({
-      status: status.active,
-      $or: [{ createdBy: user }, { assignedTo: user }],
-    });
-    return res.json({ templatesData });
-  } catch (error) {
-    next(error);
-  }
-});
+router.post("/clone/:id", checkLoginStatus, cloneTemplate);
 
 router.post(
   "/addExcel/:id",checkLoginStatus,
@@ -206,121 +118,17 @@ router.post(
   }
 );
 
-router.get("/extractFields/:id", checkLoginStatus, async (req, res, next) => {
-  try {
-    const templateId = req?.params?.id;
-    const templateVar = await TemplateModel.findOne({id: templateId,}).select("templateVariables");
-    const temp = await TemplateModel.findOne({id: templateId,}).select("templateName assignedTo");
-    const assignedToExists = temp?.assignedTo ? true : false;
-    const name = temp?.templateName;
+router.get("/extractFields/:id", checkLoginStatus, getFields);
 
-    return res.json({ templateVar, name, assignedToExists });
-  } catch (error) {
-    next(error);
-  }
-});
+router.get("/getAll/:id", checkLoginStatus, getDocuments);
 
-router.get("/getAll/:id", checkLoginStatus, async (req, res, next) => {
-  try {
-    const id = req?.params?.id;
+router.delete("/deleteDoc/:id/:docId",checkLoginStatus, deleteDocument);
 
-    const allExcelFields = await TemplateModel.find({id: new mongoose.Types.ObjectId(id),}).select("data status");
+router.get("/preview/:templateID/:id", checkLoginStatus, documentPreview);
 
-    const finalOutput = allExcelFields[0]?.data;
-    const templateDoc = await TemplateModel.findOne({id: id,}).select("assignedTo");
-    const isDispatched = !!templateDoc?.assignedTo;
+router.get("/requests",checkLoginStatus, getRequests);
 
-    res.json({ finalOutput, isDispatched });
-  } catch (error) {
-    next(error);
-  }
-});
+router.get("/rejected/:tempId",checkLoginStatus, getRejectedDoc);
 
-router.delete("/deleteDoc/:id/:docId",checkLoginStatus,
-  async (req, res, next) => {
-    try {
-      const templateID = req?.params?.id;
-      const docId = req?.params?.docId;
-      const template = await TemplateModel.findOne({id : templateID}).select("signStatus");
-      if(template?.signStatus != signStatus.unsigned){
-        return res.status(403).json({msg : "No access to delete"});
-      }
-      
-      const result = await TemplateModel.updateOne(
-        { id: templateID },
-        { $pull: { data: { id: docId } } }
-      );
-
-      const allExcelFields = await TemplateModel.find({ id: new mongoose.Types.ObjectId(templateID) }).select("data status");
-      const finalOutput = allExcelFields[0]?.data;
-      return res.json({ finalOutput });
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-router.get("/preview/:templateID/:id", checkLoginStatus,
-  async (req, res, next) => {
-    try {
-      const templateId = req?.params?.templateID;
-      const id = req?.params?.id;
-
-      const result = await TemplateModel.findOne({ id: templateId, "data.id": id },{ "data.$": 1 }).select("url");
-      const dataToFill = result.data[0].data;
-      const path = result.url;
-
-      const bufferData = await docPreview(dataToFill, path);
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", "inline; filename=offer_letter.pdf");
-      res.send(bufferData);
-    } catch (error) {
-      next(error);
-    }
-  }
-);
-
-router.get("/requests",checkLoginStatus, async (req, res, next) => {
-  try {
-    const user = req?.session?.userId;
-    const requests = await TemplateModel.find({
-      status: status.active,
-      $or: [{ createdBy: user }, { assignedTo: user }],
-    });
-    return res.json({ requests });
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.get("/rejected/:tempId",checkLoginStatus, async (req, res, next) => {
-  try {
-    const templateId = req?.params?.tempId;
-    const template = await TemplateModel.find({ id: templateId }).select("data");
-    const rejectedDoc = template[0]?.data?.filter(
-      (doc) => doc.signStatus == signStatus.rejected
-    );
-
-    return res.json({ rejectedDoc });
-  } catch (error) {
-    next(error);
-  }
-});
-
-router.get("/sign-preview/:templateID/:id",checkLoginStatus, async (req, res, next) => {
-  try {
-    const templateId = req?.params?.templateID;
-    const docId = req?.params?.id;
-    const template = await TemplateModel.findOne({ id: templateId },{ data: 1 });
-    const doc = template?.data?.find((ele) => ele.id == docId);
-    const filePath = path.join(process.cwd(),"app", "public", "signed", doc?.url);
-    
-    const fileBuffer = await fs.readFileSync(filePath);
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'inline'); 
-    res.send(fileBuffer);
-  } catch (error) {
-    next(error);
-  }
-});
+router.get("/sign-preview/:templateID/:id",checkLoginStatus, signedPreview);
 export default router;
